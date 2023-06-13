@@ -48,15 +48,13 @@ void main() {
           HashMap<String, dynamic>.from({
             'keyA': 'a1',
             'keyB': {
-              'keyC':
-                  HashMap<String, dynamic>.from(<String, dynamic>{'keyD': 'd1'})
+              'keyC': HashMap.from({'keyD': 'd1'})
             }
           }),
           {
             'keyA': 'a2',
             'keyB': {
-              'keyC':
-                  HashMap<String, dynamic>.from(<String, dynamic>{'keyD': 'd2'})
+              'keyC': HashMap.from({'keyD': 'd2'})
             }
           },
         ]),

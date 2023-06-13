@@ -2,6 +2,11 @@ import 'dart:async';
 
 import 'package:graphql/client.dart';
 
+import 'package:graphql/src/core/query_manager.dart';
+import 'package:graphql/src/core/query_options.dart';
+import 'package:graphql/src/core/query_result.dart';
+import 'package:graphql/src/core/policies.dart';
+
 import 'package:graphql/src/core/_query_write_handling.dart';
 
 /// Fetch more results and then merge them with [previousResult]
@@ -12,22 +17,29 @@ import 'package:graphql/src/core/_query_write_handling.dart';
 ///
 /// This is the **Internal Implementation**,
 /// used by [ObservableQuery] and [GraphQLCLient.fetchMore]
-Future<QueryResult<TParsed>> fetchMoreImplementation<TParsed>(
+Future<QueryResult> fetchMoreImplementation(
   FetchMoreOptions fetchMoreOptions, {
-  required QueryOptions<TParsed> originalOptions,
+  required QueryOptions originalOptions,
   required QueryManager queryManager,
-  required QueryResult<TParsed> previousResult,
+  required QueryResult previousResult,
   String? queryId,
 }) async {
-  // fetch more and update
+  // fetch more and udpate
 
+  final document = (fetchMoreOptions.document ?? originalOptions.document);
   final request = originalOptions.asRequest;
 
-  final combinedOptions =
-      originalOptions.withFetchMoreOptions(fetchMoreOptions);
+  final combinedOptions = QueryOptions(
+    fetchPolicy: FetchPolicy.noCache,
+    errorPolicy: originalOptions.errorPolicy,
+    document: document,
+    variables: {
+      ...originalOptions.variables,
+      ...fetchMoreOptions.variables,
+    },
+  );
 
-  QueryResult<TParsed> fetchMoreResult =
-      await queryManager.query(combinedOptions);
+  QueryResult fetchMoreResult = await queryManager.query(combinedOptions);
 
   try {
     // combine the query with the new query, using the function provided by the user

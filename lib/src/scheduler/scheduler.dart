@@ -18,7 +18,7 @@ class QueryScheduler {
 
   /// Map going from poling interval to the query ids that fire on that interval.
   /// These query ids are associated with a [ObservableQuery] in the registeredQueries.
-  Map<Duration?, Set<String>> intervalQueries = <Duration?, Set<String>>{};
+  Map<Duration?, List<String>> intervalQueries = <Duration?, List<String>>{};
 
   /// Map going from polling interval durations to polling timers.
   final Map<Duration?, Timer> _pollingTimers = <Duration?, Timer>{};
@@ -57,7 +57,7 @@ class QueryScheduler {
     }
 
     // fetch each query on the interval
-    intervalQueries[interval]!.forEach(queryManager!.refetchQuery<dynamic>);
+    intervalQueries[interval]!.forEach(queryManager!.refetchQuery);
   }
 
   void startPollingQuery(
@@ -75,7 +75,7 @@ class QueryScheduler {
     if (intervalQueries.containsKey(interval)) {
       intervalQueries[interval]!.add(queryId);
     } else {
-      intervalQueries[interval] = Set<String>.of([queryId]);
+      intervalQueries[interval] = <String>[queryId];
 
       _pollingTimers[interval] = Timer.periodic(
         interval!,

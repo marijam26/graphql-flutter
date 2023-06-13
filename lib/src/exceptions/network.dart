@@ -2,23 +2,13 @@ import 'package:http/http.dart' as http show ClientException;
 
 import 'package:gql_link/gql_link.dart' show LinkException;
 
-/// Exception occurring when there is a network-level error.
-/// This constructor is deprecated, use
-/// [NetworkException.fromException] instead.
+/// Exception occurring when there is a network-level error
 class NetworkException extends LinkException {
   NetworkException({
-    required Object originalException,
-    StackTrace originalStackTrace = StackTrace.empty,
+    dynamic originalException,
     this.message,
     required this.uri,
-  }) : super(originalException, originalStackTrace);
-
-  NetworkException.fromException({
-    required Object originalException,
-    required StackTrace originalStackTrace,
-    this.message,
-    required this.uri,
-  }) : super(originalException, originalStackTrace);
+  }) : super(originalException);
 
   final String? message;
   final Uri? uri;
@@ -32,11 +22,10 @@ class NetworkException extends LinkException {
 /// Once `gql_link` has robust http and socket exception handling,
 /// this and `./network.dart` can be removed and `./exceptions_next.dart`
 /// will be all that is necessary
-NetworkException? translateFailure(Object failure, StackTrace stackTrace) {
+NetworkException? translateFailure(dynamic failure) {
   if (failure is http.ClientException) {
-    return NetworkException.fromException(
+    return NetworkException(
       originalException: failure,
-      originalStackTrace: stackTrace,
       message: failure.message,
       uri: failure.uri,
     );

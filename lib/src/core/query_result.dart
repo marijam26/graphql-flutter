@@ -1,8 +1,6 @@
 import 'dart:async' show FutureOr;
 import 'package:graphql/client.dart';
-import 'package:graphql/src/core/_base_options.dart';
-import 'package:graphql/src/core/result_parser.dart';
-import 'package:meta/meta.dart';
+import 'package:graphql/src/exceptions.dart';
 
 /// The source of the result data contained
 ///
@@ -40,54 +38,31 @@ final _eagerSources = {
 };
 
 /// A single operation result
-class QueryResult<TParsed extends Object?> {
-  @protected
-  QueryResult.internal({
-    Map<String, dynamic>? data,
+class QueryResult {
+  QueryResult({
+    this.data,
     this.exception,
     this.context = const Context(),
-    required this.parserFn,
     required this.source,
-  }) : timestamp = DateTime.now() {
-    _data = data;
-  }
-
-  factory QueryResult({
-    required BaseOptions<TParsed> options,
-    Map<String, dynamic>? data,
-    OperationException? exception,
-    Context context = const Context(),
-    required QueryResultSource source,
-  }) =>
-      options.createResult(
-        source: source,
-        data: data,
-        exception: exception,
-        context: context,
-      );
+  }) : timestamp = DateTime.now();
 
   /// Unexecuted singleton, used as a placeholder for mutations,
   /// etc.
-  static final unexecuted = QueryResult.internal(
-    source: null,
-    parserFn: (d) =>
-        throw UnimplementedError("Unexecuted query data can not be parsed."),
-  )..timestamp = DateTime.fromMillisecondsSinceEpoch(0);
+  static final unexecuted = QueryResult(source: null)
+    ..timestamp = DateTime.fromMillisecondsSinceEpoch(0);
 
   factory QueryResult.loading({
-    required BaseOptions<TParsed> options,
     Map<String, dynamic>? data,
   }) =>
-      options.createResult(
+      QueryResult(
         data: data,
         source: QueryResultSource.loading,
       );
 
   factory QueryResult.optimistic({
-    required BaseOptions<TParsed> options,
     Map<String, dynamic>? data,
   }) =>
-      options.createResult(
+      QueryResult(
         data: data,
         source: QueryResultSource.optimisticResult,
       );
@@ -101,24 +76,12 @@ class QueryResult<TParsed extends Object?> {
   QueryResultSource? source;
 
   /// Response data
-  Map<String, dynamic>? get data {
-    return _data;
-  }
-
-  set data(Map<String, dynamic>? data) {
-    _data = data;
-    _cachedParsedData = null;
-  }
-
-  Map<String, dynamic>? _data;
-  TParsed? _cachedParsedData;
+  Map<String, dynamic>? data;
 
   /// Response context. Defaults to an empty `Context()`
   Context context;
 
   OperationException? exception;
-
-  ResultParserFn<TParsed> parserFn;
 
   /// [data] has yet to be specified from any source
   /// for the _most recent_ operation
@@ -145,21 +108,6 @@ class QueryResult<TParsed extends Object?> {
   /// Whether the response includes an [exception]
   bool get hasException => (exception != null);
 
-  /// If a parserFn is provided, this getter can be used to fetch the parsed data.
-  TParsed? get parsedData {
-    final data = this.data;
-    final parserFn = this.parserFn;
-    final cachedParsedData = _cachedParsedData;
-
-    if (data == null) {
-      return null;
-    }
-    if (cachedParsedData != null) {
-      return cachedParsedData;
-    }
-    return _cachedParsedData = parserFn(data);
-  }
-
   @override
   String toString() => 'QueryResult('
       'source: $source, '
@@ -170,17 +118,16 @@ class QueryResult<TParsed extends Object?> {
       ')';
 }
 
-class MultiSourceResult<TParsed> {
+class MultiSourceResult {
   MultiSourceResult({
-    required BaseOptions<TParsed> options,
-    QueryResult<TParsed>? eagerResult,
+    QueryResult? eagerResult,
     this.networkResult,
-  })  : eagerResult = eagerResult ?? QueryResult.loading(options: options),
+  })  : eagerResult = eagerResult ?? QueryResult.loading(),
         assert(
           eagerResult!.source != QueryResultSource.network,
           'An eager result cannot be gotten from the network',
         );
 
-  QueryResult<TParsed> eagerResult;
-  FutureOr<QueryResult<TParsed>>? networkResult;
+  QueryResult eagerResult;
+  FutureOr<QueryResult>? networkResult;
 }

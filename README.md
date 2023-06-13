@@ -1,35 +1,18 @@
-<div align="center">
-  <h1>GraphQL <Client></Client></h1>
+[![MIT License][license-badge]][license-link]
+[![All Contributors](https://img.shields.io/badge/all_contributors-31-orange.svg?style=flat-square)](#contributors)
+[![PRs Welcome][prs-badge]][prs-link]
 
-  <div align="center">
-      <img src="https://miro.medium.com/max/1400/1*bU9k3XzmNAQ9F9J0uCiFsQ.png" width="800"/>
-  </div>
+[![Star on GitHub][github-star-badge]][github-star-link]
+[![Watch on GitHub][github-watch-badge]][github-watch-link]
+[![Discord][discord-badge]][discord-link]
 
-  <p>
-    <strong>Client implementation to interact with any graphql server</strong>
-  </p>
+[![Build Status][build-status-badge]][build-status-link]
+[![Coverage][coverage-badge]][coverage-link]
+[![version][version-badge]][package-link]
 
-  <h4>
-    <a href="https://github.com/zino-hofmann/graphql-flutter">Project Homepage</a>
-  </h4>
+# GraphQL Client
 
-  <a href="https://github.com/laanwj/rust-clightning-rpc/actions">
-    <img alt="GitHub Workflow Status (branch)" src="https://img.shields.io/github/workflow/status/laanwj/rust-clightning-rpc/Integration%20testing/master?style=flat-square"/>
-  </a>
-
-  <a href="https://pub.dev/packages/graphql">
-    <img alt="Pub Popularity" src="https://img.shields.io/pub/popularity/graphql?style=flat-square"/>
-  </a>
-
-  <a href="https://discord.gg/YBFCTXNbwY">
-    <img alt="Discord" src="https://img.shields.io/discord/559455668810153989?style=flat-square"/>
-  </a>
-
-</div>
-
-## Introduction
-
-[graphql/client.dart](https://pub.dev/packages/graphql) is a GraphQL client for dart modeled on the [apollo client], and is currently the most popular GraphQL client for dart. It is co-developed alongside [`graphql_flutter`](https://pub.dev/packages/graphql_flutter) [on github](https://github.com/zino-app/graphql-flutter), where you can find more in-depth examples. We also have a lively community alongside the rest of the GraphQL Dart community on [discord][discord-link].
+[`graphql/client.dart`](https://pub.dev/packages/graphql) is a GraphQL client for dart modeled on the [apollo client], and is currently the most popular GraphQL client for dart. It is co-developed alongside [`graphql_flutter`](https://pub.dev/packages/graphql_flutter) [on github](https://github.com/zino-app/graphql-flutter), where you can find more in-depth examples. We also have a lively community alongside the rest of the GraphQL Dart community on [discord][discord-link].
 
 As of `v4`, it is built on foundational libraries from the [gql-dart project], including [`gql`], [`gql_link`], and [`normalize`]. We also depend on [hive](https://docs.hivedb.dev/#/) for persistence via `HiveStore`.
 
@@ -58,7 +41,7 @@ As of `v4`, it is built on foundational libraries from the [gql-dart project], i
   - [Links](#links)
     - [Composing Links](#composing-links)
     - [AWS AppSync Support](#aws-appsync-support)
-  - [Code generation](#code-generation)
+  - [Parsing ASTs at build-time](#parsing-asts-at-build-time)
   - [`PersistedQueriesLink` (experimental) :warning: OUT OF SERVICE :warning:](#persistedquerieslink-experimental-warning-out-of-service-warning)
 
 **Useful API Docs:**
@@ -70,8 +53,9 @@ As of `v4`, it is built on foundational libraries from the [gql-dart project], i
 
 First, depend on this package:
 
-```console
-$ flutter pub add graphql
+```yaml
+dependencies:
+  graphql: ^4.0.0-beta
 ```
 
 And then import it inside your dart code:
@@ -277,7 +261,6 @@ mutation($files: [Upload!]!) {
 
 ```dart
 import "package:http/http.dart" show Multipartfile;
-import "package:http_parser/http_parser.dart" show MediaType;
 
 // ...
 
@@ -333,7 +316,7 @@ subscription.listen(reactToAddedReview)
 used to supply custom headers to an IO client, register custom listeners,
 and extract the socket for other non-graphql features.
 
-**Warning:** if you want to listen to the stream,
+**Warning:** if you want to listen to the listen to the stream,
 wrap your channel with our `GraphQLWebSocketChannel` using the `.forGraphQL()` helper:
 ```dart
 connect: (url, protocols) {
@@ -346,91 +329,11 @@ connect: (url, protocols) {
 }
 ```
 
-To supply custom headers (not supported on Flutter Web):
+To supply custom headers to an IO client:
 ```dart
- SocketClient(
-    wsUrl,
-    config: SocketClientConfig(
-      autoReconnect: autoReconnect,
-      headers: customHeaders,
-      delayBetweenReconnectionAttempts: delayBetweenReconnectionAttempts,
-    ),
- );
+connect: (url, protocols) =>
+  IOWebSocketChannel.connect(url, protocols: protocols, headers: myCustomHeaders)
 ```
-
-
-#### Updating WebSocket socket connection
-
-In some cases, you want to update your web socket connection (as described in #727), in order to implement this functionality you need to do the following steps:
-
-1- create your custom websocket link
-
-```dart
-
-class SocketCustomLink extends Link {
-  SocketCustomLink(this.url);
-  final String url;
-  _Connection? _connection;
-
-  /// this will be called every time you make a subscription
-  @override
-  Stream<Response> request(Request request, [forward]) async* {
-    /// first get the token by your own way
-    String? token = "...";
-
-    /// check is connection is null or the token changed
-    if (_connection == null || _connection!.token != token) {
-      connectOrReconnect(token);
-    }
-    yield* _connection!.client.subscribe(request, true);
-  }
-
-  /// Connects or reconnects to the server with the specified headers.
-  void connectOrReconnect(String? token) {
-    _connection?.client.dispose();
-    var _url = Uri.parse(url);
-    if (kIsWeb) {
-      /// web don't support headers in sockets so you may need to pass it as query string
-      /// server must support that
-      _url = _url.replace(queryParameters: {"access_token": token});
-    }
-    _connection = _Connection(
-      client: SocketClient(
-        _url.toString(),
-        config: SocketClientConfig(
-          autoReconnect: true,
-          headers: kIsWeb || token == null
-              ? null
-              : {"Authorization": " Bearer $token"},
-        ),
-      ),
-      token: token,
-    );
-  }
-
-  @override
-  Future<void> dispose() async {
-    await _connection?.client.dispose();
-    _connection = null;
-  }
-}
-
-/// this a wrapper for web socket to hold the used token
-class _Connection {
-  SocketClient client;
-  String? token;
-  _Connection({
-    required this.client,
-    required this.token,
-  });
-}
-
-```
-
-2- if you need to update your socket just cancel your subscription and resubscribe again using usual way 
-and if the token changed it will be reconnect with the new token otherwise it will use the same client
-
-
 
 ### `client.watchQuery` and `ObservableQuery`
 
@@ -517,79 +420,6 @@ String customDataIdFromObject(Map<String, Object> data) {
     return '${typeName}/${entityId}/${version}';
 }
 ```
-
-Normalize requires you to specify the possible types map for fragments to work correctly. This
-is a mapping from abstract union and interface types to their concrete object types. E.g. take the
-schema
-
-```graphql
-
-interface PersonI {
-  name: String
-  age: Int
-}
-
-type Employee implements PersonI {
-  name: String
-  age: Int
-  daysOfEmployement: Int
-}
-
-type InStoreCustomer implements PersonI {
-  name: String
-  age: Int
-  numberOfPurchases: Int
-}
-
-type OnlineCustomer implements PersonI {
-  name: String
-  age: Int
-  numberOfPurchases: Int
-}
-
-union CustomerU = OnlineCustomer | InStoreCustomer
-
-```
-
-the possible types map would be:
-
-```dart
-const POSSIBLE_TYPES = const {
-  'CustomerU': {'InStoreCustomer', 'OnlineCustomer'},
-  'PersonI': {'Employee', 'InStoreCustomer', 'OnlineCustomer'},
-}
-
-// Here's how it's parsed to the cache
-final client = GraphQLClient(
-  cache: GraphQLCache(
-    possibleTypes: POSSIBLE_TYPES,
-  ),
-)
-```
-
-You can generate the `POSSIBLE_TYPES` map, e.g., using [graphql_codegen](https://pub.dev/packages/graphql_codegen).
-
-Furthermore, for normalize to correctly resolve the type you should always make sure you're querying the `__typename`. Given the example above a query could look something like
-
-```graphql
-
-query {
-  people {
-    __typename # Needed to decide where which entry to update in the cache
-    ... on Employee {
-      name
-      age
-    }
-    ... on Customer {
-      name
-      age
-    }
-  }
-}
-
-```
-
-if you're not providing the possible type map and introspecting the typename, the cache can't be updated. 
 
 ## Direct Cache Access API
 
@@ -835,7 +665,7 @@ final Link _link = Link.from([_authLink, _httpLink]);
 link = Link.split((request) => request.isSubscription, websocketLink, link);
 ```
 
-When combining links, **it is important to note that**:
+When combining links, **it isimportant to note that**:
 
 - Terminating links like `HttpLink` and `WebsocketLink` must come at the end of a route, and will not call links following them.
 - Link order is very important. In `HttpLink(myEndpoint).concat(AuthLink(getToken: authenticate))`, the `AuthLink` will never be called.
@@ -865,17 +695,21 @@ API key, IAM, and Federated provider authorization could be accomplished through
 - Making a custom link: [Comment on Issue 173](https://github.com/zino-app/graphql-flutter/issues/173#issuecomment-464435942)
 - AWS JS SDK `auth-link.ts`: [aws-mobile-appsync-sdk-js:auth-link.ts](https://github.com/awslabs/aws-mobile-appsync-sdk-js/blob/master/packages/aws-appsync-auth-link/src/auth-link.ts)
 
-## Code generation
+## Parsing ASTs at build-time
 
-This package does not support code-generation out of the box, but [graphql_codegen](https://pub.dev/packages/graphql_codegen) does!
+All `document` arguments are `DocumentNode`s from `gql/ast`.
+We supply a `gql` helper for parsing, them, but you can also
+parse documents at build-time use `ast_builder` from
+[`package:gql_code_gen`](https://pub.dev/packages/gql_code_gen):
 
-This package extensions on the client which takes away the struggle of serialization and gives you confidence through type-safety. 
-It is also more performant than parsing GraphQL queries at runtime.
+```yaml
+dev_dependencies:
+  gql_code_gen: ^0.1.5
+```
 
-For example, by creating the `.graphql` file
+**`add_star.graphql`**:
 
 ```graphql
-# add_star.graphql
 mutation AddStar($starrableId: ID!) {
   action: addStar(input: { starrableId: $starrableId }) {
     starrable {
@@ -885,20 +719,19 @@ mutation AddStar($starrableId: ID!) {
 }
 ```
 
-after building, you'll be able to execute your mutation on the client as:
-
 ```dart
-// add_star.dart
-import 'add_star.graphql.dart';
+import 'package:gql/add_star.ast.g.dart' as add_star;
 
-// ..
+// ...
 
+final MutationOptions options = MutationOptions(
+  document: add_star.document,
+  variables: <String, dynamic>{
+    'starrableId': repositoryID,
+  },
+);
 
-  await client.mutateAddStar(
-    OptionsMutationAddStar(
-      variables: VariablesMutationAddStar(starableId: repositoryID)
-    )
-  );
+// ...
 ```
 
 ## `PersistedQueriesLink` (experimental) :warning: OUT OF SERVICE :warning:
@@ -924,30 +757,16 @@ final HttpLink _httpLink = HttpLink(
 final Link _link = _apqLink.concat(_httpLink);
 ```
 
-## Q&A
-### CSRF Error while uploading MultipartFile
-If you are receiving csrf error from your apollo graphql server while uploading file,
-your need to add some additional headers to the `HttpLink`:
-<br>
-Also ensure that you're add `contentType` to `MultipartFile` as `MediaType`
-
-```dart
-HttpLink httpLink = HttpLink('https://api.url/graphql', defaultHeaders: {
-  'Content-Type': 'application/json; charset=utf-8',
-  'X-Apollo-Operation-Name': 'post'
-})
-```
-
-[build-status-badge]: https://img.shields.io/github/workflow/status/zino-hofmann/graphql-flutter/graphql-flutter%20Tests%20case?style=flat-square
-[build-status-link]: https://github.com/zino-hofmann/graphql-flutter/actions
-[coverage-badge]: https://img.shields.io/codecov/c/github/zino-hofmann/graphql-flutter/beta?style=flat-square
-[coverage-link]: https://app.codecov.io/gh/zino-hofmann/graphql-flutter
+[build-status-badge]: https://img.shields.io/circleci/build/github/zino-app/graphql-flutter.svg?style=flat-square
+[build-status-link]: https://circleci.com/gh/zino-app/graphql-flutter
+[coverage-badge]: https://img.shields.io/codecov/c/github/zino-app/graphql-flutter.svg?style=flat-square
+[coverage-link]: https://codecov.io/gh/zino-app/graphql-flutter
 [version-badge]: https://img.shields.io/pub/v/graphql_flutter.svg?style=flat-square
 [package-link]: https://pub.dartlang.org/packages/graphql/versions
 [license-badge]: https://img.shields.io/github/license/zino-app/graphql-flutter.svg?style=flat-square
 [license-link]: https://github.com/zino-app/graphql-flutter/blob/master/LICENSE
 [prs-badge]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square
-[prs-link]: https://makeapullrequest.com
+[prs-link]: http://makeapullrequest.com
 [github-watch-badge]: https://img.shields.io/github/watchers/zino-app/graphql-flutter.svg?style=flat-square&logo=github&logoColor=ffffff
 [github-watch-link]: https://github.com/zino-app/graphql-flutter/watchers
 [github-star-badge]: https://img.shields.io/github/stars/zino-app/graphql-flutter.svg?style=flat-square&logo=github&logoColor=ffffff

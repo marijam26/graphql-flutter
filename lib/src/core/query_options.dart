@@ -1,21 +1,15 @@
-import 'dart:async';
-
+// ignore_for_file: deprecated_member_use_from_same_package
 import 'package:graphql/src/core/_base_options.dart';
-import 'package:graphql/src/core/result_parser.dart';
 import 'package:graphql/src/utilities/helpers.dart';
 
 import 'package:gql/ast.dart';
+import 'package:gql_exec/gql_exec.dart';
 
 import 'package:graphql/client.dart';
-import 'package:meta/meta.dart';
-
-typedef OnQueryComplete = FutureOr<void> Function(Map<String, dynamic>? data);
-
-typedef OnQueryError = FutureOr<void> Function(OperationException? error);
+import 'package:graphql/src/core/policies.dart';
 
 /// Query options.
-@immutable
-class QueryOptions<TParsed extends Object?> extends BaseOptions<TParsed> {
+class QueryOptions extends BaseOptions {
   QueryOptions({
     required DocumentNode document,
     String? operationName,
@@ -26,9 +20,6 @@ class QueryOptions<TParsed extends Object?> extends BaseOptions<TParsed> {
     Object? optimisticResult,
     this.pollInterval,
     Context? context,
-    ResultParserFn<TParsed>? parserFn,
-    this.onComplete,
-    this.onError,
   }) : super(
           fetchPolicy: fetchPolicy,
           errorPolicy: errorPolicy,
@@ -38,40 +29,15 @@ class QueryOptions<TParsed extends Object?> extends BaseOptions<TParsed> {
           variables: variables,
           context: context,
           optimisticResult: optimisticResult,
-          parserFn: parserFn,
         );
 
-  final OnQueryComplete? onComplete;
-  final OnQueryError? onError;
-
   /// The time interval on which this query should be re-fetched from the server.
-  final Duration? pollInterval;
+  Duration? pollInterval;
 
   @override
-  List<Object?> get properties => [
-        ...super.properties,
-        pollInterval,
-        onComplete,
-        onError,
-      ];
+  List<Object?> get properties => [...super.properties, pollInterval];
 
-  QueryOptions<TParsed> withFetchMoreOptions(
-    FetchMoreOptions fetchMoreOptions,
-  ) =>
-      QueryOptions<TParsed>(
-        document: fetchMoreOptions.document ?? document,
-        operationName: operationName,
-        fetchPolicy: FetchPolicy.noCache,
-        errorPolicy: errorPolicy,
-        parserFn: parserFn,
-        context: context,
-        variables: {
-          ...variables,
-          ...fetchMoreOptions.variables,
-        },
-      );
-
-  WatchQueryOptions<TParsed> asWatchQueryOptions({bool fetchResults = true}) =>
+  WatchQueryOptions asWatchQueryOptions({bool fetchResults = true}) =>
       WatchQueryOptions(
         document: document,
         operationName: operationName,
@@ -83,26 +49,10 @@ class QueryOptions<TParsed extends Object?> extends BaseOptions<TParsed> {
         fetchResults: fetchResults,
         context: context,
         optimisticResult: optimisticResult,
-        parserFn: parserFn,
-      );
-
-  QueryOptions<TParsed> copyWithPolicies(Policies policies) => QueryOptions(
-        document: document,
-        operationName: operationName,
-        variables: variables,
-        fetchPolicy: policies.fetch,
-        errorPolicy: policies.error,
-        cacheRereadPolicy: policies.cacheReread,
-        optimisticResult: optimisticResult,
-        pollInterval: pollInterval,
-        context: context,
-        parserFn: parserFn,
       );
 }
 
-@immutable
-class SubscriptionOptions<TParsed extends Object?>
-    extends BaseOptions<TParsed> {
+class SubscriptionOptions extends BaseOptions {
   SubscriptionOptions({
     required DocumentNode document,
     String? operationName,
@@ -112,7 +62,6 @@ class SubscriptionOptions<TParsed extends Object?>
     CacheRereadPolicy? cacheRereadPolicy,
     Object? optimisticResult,
     Context? context,
-    ResultParserFn<TParsed>? parserFn,
   }) : super(
           fetchPolicy: fetchPolicy,
           errorPolicy: errorPolicy,
@@ -122,24 +71,13 @@ class SubscriptionOptions<TParsed extends Object?>
           variables: variables,
           context: context,
           optimisticResult: optimisticResult,
-          parserFn: parserFn,
         );
-  SubscriptionOptions<TParsed> copyWithPolicies(Policies policies) =>
-      SubscriptionOptions(
-        document: document,
-        operationName: operationName,
-        variables: variables,
-        fetchPolicy: policies.fetch,
-        errorPolicy: policies.error,
-        cacheRereadPolicy: policies.cacheReread,
-        optimisticResult: optimisticResult,
-        context: context,
-        parserFn: parserFn,
-      );
+
+  /// An optimistic first result to eagerly add to the subscription stream
+  Object? optimisticResult;
 }
 
-@immutable
-class WatchQueryOptions<TParsed extends Object?> extends QueryOptions<TParsed> {
+class WatchQueryOptions extends QueryOptions {
   WatchQueryOptions({
     required DocumentNode document,
     String? operationName,
@@ -153,7 +91,6 @@ class WatchQueryOptions<TParsed extends Object?> extends QueryOptions<TParsed> {
     this.carryForwardDataOnException = true,
     bool? eagerlyFetchResults,
     Context? context,
-    ResultParserFn<TParsed>? parserFn,
   })  : eagerlyFetchResults = eagerlyFetchResults ?? fetchResults,
         super(
           document: document,
@@ -165,32 +102,24 @@ class WatchQueryOptions<TParsed extends Object?> extends QueryOptions<TParsed> {
           pollInterval: pollInterval,
           context: context,
           optimisticResult: optimisticResult,
-          parserFn: parserFn,
         );
 
   /// Whether or not to fetch results
-  final bool fetchResults;
+  bool fetchResults;
 
   /// Whether to [fetchResults] immediately on instantiation.
   /// Defaults to [fetchResults].
-  final bool eagerlyFetchResults;
+  bool eagerlyFetchResults;
 
   /// carry forward previous data in the result of errors and no data.
   /// defaults to `true`.
-  final bool carryForwardDataOnException;
+  bool carryForwardDataOnException;
 
   @override
-  List<Object?> get properties => [
-        ...super.properties,
-        fetchResults,
-        eagerlyFetchResults,
-        carryForwardDataOnException,
-      ];
+  List<Object?> get properties =>
+      [...super.properties, fetchResults, eagerlyFetchResults];
 
-  WatchQueryOptions<TParsed> copyWithFetchPolicy(
-    FetchPolicy? fetchPolicy,
-  ) =>
-      WatchQueryOptions<TParsed>(
+  WatchQueryOptions copy() => WatchQueryOptions(
         document: document,
         operationName: operationName,
         variables: variables,
@@ -203,78 +132,6 @@ class WatchQueryOptions<TParsed extends Object?> extends QueryOptions<TParsed> {
         eagerlyFetchResults: eagerlyFetchResults,
         carryForwardDataOnException: carryForwardDataOnException,
         context: context,
-        parserFn: parserFn,
-      );
-  WatchQueryOptions<TParsed> copyWithPolicies(
-    Policies policies,
-  ) =>
-      WatchQueryOptions<TParsed>(
-        document: document,
-        operationName: operationName,
-        variables: variables,
-        fetchPolicy: policies.fetch,
-        errorPolicy: policies.error,
-        cacheRereadPolicy: policies.cacheReread,
-        optimisticResult: optimisticResult,
-        pollInterval: pollInterval,
-        fetchResults: fetchResults,
-        eagerlyFetchResults: eagerlyFetchResults,
-        carryForwardDataOnException: carryForwardDataOnException,
-        context: context,
-        parserFn: parserFn,
-      );
-
-  WatchQueryOptions<TParsed> copyWithPollInterval(Duration? pollInterval) =>
-      WatchQueryOptions<TParsed>(
-        document: document,
-        operationName: operationName,
-        variables: variables,
-        fetchPolicy: fetchPolicy,
-        errorPolicy: errorPolicy,
-        cacheRereadPolicy: cacheRereadPolicy,
-        optimisticResult: optimisticResult,
-        pollInterval: pollInterval,
-        fetchResults: fetchResults,
-        eagerlyFetchResults: eagerlyFetchResults,
-        carryForwardDataOnException: carryForwardDataOnException,
-        context: context,
-        parserFn: parserFn,
-      );
-
-  WatchQueryOptions<TParsed> copyWithVariables(
-          Map<String, dynamic> variables) =>
-      WatchQueryOptions<TParsed>(
-        document: document,
-        operationName: operationName,
-        variables: variables,
-        fetchPolicy: fetchPolicy,
-        errorPolicy: errorPolicy,
-        cacheRereadPolicy: cacheRereadPolicy,
-        optimisticResult: optimisticResult,
-        pollInterval: pollInterval,
-        fetchResults: fetchResults,
-        eagerlyFetchResults: eagerlyFetchResults,
-        carryForwardDataOnException: carryForwardDataOnException,
-        context: context,
-        parserFn: parserFn,
-      );
-
-  WatchQueryOptions<TParsed> copyWithOptimisticResult(
-          Object? optimisticResult) =>
-      WatchQueryOptions<TParsed>(
-        document: document,
-        operationName: operationName,
-        variables: variables,
-        fetchPolicy: fetchPolicy,
-        errorPolicy: errorPolicy,
-        cacheRereadPolicy: cacheRereadPolicy,
-        optimisticResult: optimisticResult,
-        pollInterval: pollInterval,
-        fetchResults: fetchResults,
-        eagerlyFetchResults: eagerlyFetchResults,
-        carryForwardDataOnException: carryForwardDataOnException,
-        context: context,
-        parserFn: parserFn,
       );
 }
 
@@ -284,7 +141,6 @@ class WatchQueryOptions<TParsed extends Object?> extends QueryOptions<TParsed> {
 /// it is easy to make mistakes in writing [updateQuery].
 ///
 /// To mitigate this, [FetchMoreOptions.partial] has been provided.
-@immutable
 class FetchMoreOptions {
   FetchMoreOptions({
     this.document,
@@ -308,13 +164,13 @@ class FetchMoreOptions {
         updateQuery: partialUpdater(updateQuery),
       );
 
-  final DocumentNode? document;
+  DocumentNode? document;
 
-  final Map<String, dynamic> variables;
+  Map<String, dynamic> variables;
 
   /// Strategy for merging the fetchMore result data
   /// with the result data already in the cache
-  final UpdateQuery updateQuery;
+  UpdateQuery updateQuery;
 
   /// Wrap an [UpdateQuery] in a [deeplyMergeLeft] of the `previousResultData`.
   static UpdateQuery partialUpdater(UpdateQuery update) =>
@@ -324,7 +180,7 @@ class FetchMoreOptions {
 }
 
 /// merge fetchMore result data with earlier result data
-typedef UpdateQuery = Map<String, dynamic>? Function(
+typedef Map<String, dynamic>? UpdateQuery(
   Map<String, dynamic>? previousResultData,
   Map<String, dynamic>? fetchMoreResultData,
 );
@@ -347,40 +203,4 @@ extension WithType on Request {
   bool get isQuery => type == OperationType.query;
   bool get isMutation => type == OperationType.mutation;
   bool get isSubscription => type == OperationType.subscription;
-}
-
-/// Handles execution of query callbacks
-class QueryCallbackHandler<TParsed> {
-  final QueryOptions<TParsed> options;
-
-  QueryCallbackHandler({required this.options});
-
-  Iterable<OnData<TParsed>> get callbacks {
-    var callbacks = List<OnData<TParsed>?>.empty(growable: true);
-    callbacks.addAll([onCompleted, onError]);
-    // FIXME: can we remove the type in whereType?
-    return callbacks.whereType<OnData<TParsed>>();
-  }
-
-  OnData<TParsed>? get onCompleted {
-    if (options.onComplete != null) {
-      return (QueryResult? result) {
-        if (!result!.isLoading && !result.isOptimistic) {
-          return options.onComplete!(result.data);
-        }
-      };
-    }
-    return null;
-  }
-
-  OnData<TParsed>? get onError {
-    if (options.onError != null && options.errorPolicy != ErrorPolicy.ignore) {
-      return (QueryResult? result) {
-        if (!result!.isLoading && result.hasException) {
-          return options.onError!(result.exception);
-        }
-      };
-    }
-    return null;
-  }
 }

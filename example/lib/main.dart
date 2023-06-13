@@ -78,7 +78,7 @@ void readRepositories() async {
       result.data!['viewer']['repositories']['nodes'] as List<dynamic>;
 
   repositories.forEach(
-    (dynamic f) => stdout.writeln('Id: ${f['id']} Name: ${f['name']}'),
+    (dynamic f) => {stdout.writeln('Id: ${f['id']} Name: ${f['name']}')},
   );
 
   exit(0);
@@ -93,7 +93,7 @@ void starRepository(String? repositoryID) async {
 
   final GraphQLClient _client = getGithubGraphQLClient();
 
-  final options = MutationOptions(
+  final MutationOptions options = MutationOptions(
     document: gql(
       r'''
         mutation AddStar($starrableId: ID!) {

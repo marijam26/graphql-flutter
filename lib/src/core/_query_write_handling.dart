@@ -1,12 +1,19 @@
 import 'package:graphql/client.dart';
 
+import 'package:gql_exec/gql_exec.dart';
+
+import 'package:graphql/src/core/query_result.dart';
+import 'package:graphql/src/core/policies.dart';
+import 'package:graphql/src/exceptions.dart';
+import 'package:normalize/normalize.dart';
+
 /// Internal writeQuery wrapper
 typedef _IntWriteQuery = void Function(
     Request request, Map<String, dynamic>? data);
 
 /// Internal [PartialDataException] handling callback
 typedef _IntPartialDataHandler = MismatchedDataStructureException Function(
-    PartialDataException failure, StackTrace stackTrace);
+    PartialDataException failure);
 
 extension InternalQueryWriteHandling on QueryManager {
   /// Merges exceptions into `queryResult` and
@@ -29,10 +36,10 @@ extension InternalQueryWriteHandling on QueryManager {
         exception: queryResult.exception,
         linkException: failure,
       );
-    } on PartialDataException catch (failure, stackTrace) {
+    } on PartialDataException catch (failure) {
       queryResult!.exception = coalesceErrors(
         exception: queryResult.exception,
-        linkException: onPartial(failure, stackTrace),
+        linkException: onPartial(failure),
       );
     }
     return false;
@@ -61,10 +68,8 @@ extension InternalQueryWriteHandling on QueryManager {
                 response.data,
                 queryResult,
                 writeQuery: (req, data) => cache.writeQuery(req, data: data!),
-                onPartial: (failure, stackTrace) =>
-                    UnexpectedResponseStructureException(
+                onPartial: (failure) => UnexpectedResponseStructureException(
                   failure,
-                  stackTrace,
                   request: request,
                   parsedResponse: response,
                 ),
@@ -86,9 +91,8 @@ extension InternalQueryWriteHandling on QueryManager {
         data,
         queryResult,
         writeQuery: writeQuery,
-        onPartial: (failure, stackTrace) => MismatchedDataStructureException(
+        onPartial: (failure) => MismatchedDataStructureException(
           failure,
-          stackTrace,
           request: request,
           data: data,
         ),

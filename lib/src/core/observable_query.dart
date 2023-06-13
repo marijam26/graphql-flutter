@@ -2,11 +2,15 @@ import 'dart:async';
 import 'package:graphql/client.dart';
 import 'package:meta/meta.dart';
 
+import 'package:graphql/src/core/query_manager.dart';
+import 'package:graphql/src/core/query_options.dart';
 import 'package:graphql/src/core/fetch_more.dart';
+import 'package:graphql/src/core/query_result.dart';
+import 'package:graphql/src/core/policies.dart';
 import 'package:graphql/src/scheduler/scheduler.dart';
 
 /// Side effect to register for execution when data is received
-typedef OnData<TParsed> = FutureOr<void> Function(QueryResult<TParsed>? result);
+typedef OnData = FutureOr<void> Function(QueryResult? result);
 
 /// Lifecycle states for [ObservableQuery.lifecycle]
 enum QueryLifecycle {
@@ -58,7 +62,7 @@ enum QueryLifecycle {
 /// And a handful of internally leveraged methods.
 ///
 /// [apollo_oq]: https://www.apollographql.com/docs/react/v3.0-beta/api/core/ObservableQuery/
-class ObservableQuery<TParsed> {
+class ObservableQuery {
   ObservableQuery({
     required this.queryManager,
     required this.options,
@@ -67,7 +71,7 @@ class ObservableQuery<TParsed> {
       _latestWasEagerlyFetched = true;
       fetchResults();
     }
-    controller = StreamController<QueryResult<TParsed>>.broadcast(
+    controller = StreamController<QueryResult>.broadcast(
       onListen: onListen,
     );
   }
@@ -85,10 +89,7 @@ class ObservableQuery<TParsed> {
   QueryScheduler? get scheduler => queryManager.scheduler;
 
   /// callbacks registered with [onData]
-  List<OnData<TParsed>> _onDataCallbacks = [];
-
-  /// same as [_onDataCallbacks], but not removed after invocation
-  Set<OnData<TParsed>> _notRemovableOnDataCallbacks = Set();
+  List<OnData> _onDataCallbacks = [];
 
   /// call [queryManager.maybeRebroadcastQueries] after all other [_onDataCallbacks]
   ///
@@ -97,15 +98,15 @@ class ObservableQuery<TParsed> {
       queryManager.maybeRebroadcastQueries(exclude: this);
 
   /// The most recently seen result from this operation's stream
-  QueryResult<TParsed>? latestResult;
+  QueryResult? latestResult;
 
   QueryLifecycle lifecycle = QueryLifecycle.unexecuted;
 
-  WatchQueryOptions<TParsed> options;
+  WatchQueryOptions options;
 
-  late StreamController<QueryResult<TParsed>> controller;
+  late StreamController<QueryResult> controller;
 
-  Stream<QueryResult<TParsed>> get stream => controller.stream;
+  Stream<QueryResult> get stream => controller.stream;
   bool get isCurrentlyPolling => lifecycle == QueryLifecycle.polling;
 
   bool get isRefetchSafe {
@@ -131,13 +132,10 @@ class ObservableQuery<TParsed> {
   ///
   /// **NOTE:** overrides any present non-network-only [FetchPolicy],
   /// as refetching from the `cache` does not make sense.
-  Future<QueryResult<TParsed>?> refetch() async {
+  Future<QueryResult?> refetch() {
     if (isRefetchSafe) {
-      addResult(QueryResult.loading(
-        data: latestResult?.data,
-        options: options,
-      ));
-      return await queryManager.refetchQuery<TParsed>(queryId);
+      addResult(QueryResult.loading(data: latestResult?.data));
+      return queryManager.refetchQuery(queryId);
     }
     throw Exception('Query is not refetch safe');
   }
@@ -182,18 +180,12 @@ class ObservableQuery<TParsed> {
     }
   }
 
-  /// Fetch results based on [options.fetchPolicy] by default.
-  ///
-  /// Optionally provide a [fetchPolicy] which will override the
-  /// default [options.fetchPolicy], just for this request.
+  /// Fetch results based on [options.fetchPolicy]
   ///
   /// Will [startPolling] if [options.pollInterval] is set
-  MultiSourceResult<TParsed> fetchResults({FetchPolicy? fetchPolicy}) {
-    final fetchOptions = fetchPolicy == null
-        ? options
-        : options.copyWithFetchPolicy(fetchPolicy);
-    final MultiSourceResult<TParsed> allResults =
-        queryManager.fetchQueryAsMultiSourceResult(queryId, fetchOptions);
+  MultiSourceResult fetchResults() {
+    final MultiSourceResult allResults =
+        queryManager.fetchQueryAsMultiSourceResult(queryId, options);
     latestResult ??= allResults.eagerResult;
 
     if (allResults.networkResult == null) {
@@ -207,9 +199,8 @@ class ObservableQuery<TParsed> {
           : QueryLifecycle.pending;
     }
 
-    if (fetchOptions.pollInterval != null &&
-        fetchOptions.pollInterval! > Duration.zero) {
-      startPolling(fetchOptions.pollInterval);
+    if (options.pollInterval != null && options.pollInterval! > Duration.zero) {
+      startPolling(options.pollInterval);
     }
 
     return allResults;
@@ -225,12 +216,8 @@ class ObservableQuery<TParsed> {
   /// it is easy to make mistakes in writing [updateQuery].
   ///
   /// To mitigate this, [FetchMoreOptions.partial] has been provided.
-  Future<QueryResult<TParsed>> fetchMore(
-      FetchMoreOptions fetchMoreOptions) async {
-    addResult(QueryResult.loading(
-      data: latestResult?.data,
-      options: options,
-    ));
+  Future<QueryResult> fetchMore(FetchMoreOptions fetchMoreOptions) async {
+    addResult(QueryResult.loading(data: latestResult?.data));
 
     return fetchMoreImplementation(
       fetchMoreOptions,
@@ -248,7 +235,7 @@ class ObservableQuery<TParsed> {
   /// if it is set to `null`.
   ///
   /// Called internally by the [QueryManager]
-  void addResult(QueryResult<TParsed> result, {bool fromRebroadcast = false}) {
+  void addResult(QueryResult result, {bool fromRebroadcast = false}) {
     // don't overwrite results due to some async/optimism issue
     if (latestResult != null &&
         latestResult!.timestamp.isAfter(result.timestamp)) {
@@ -283,36 +270,20 @@ class ObservableQuery<TParsed> {
   /// result that [QueryResult.isConcrete],
   /// handling the resolution of [lifecycle] from
   /// [QueryLifecycle.sideEffectsBlocking] to [QueryLifecycle.completed]
-  /// as appropriate, unless if [removeAfterInvocation] is set to false.
-  ///
-  /// Returns a function for removing the added callbacks
-  void Function() onData(
-    Iterable<OnData<TParsed>> callbacks, {
-    bool removeAfterInvocation = true,
-  }) {
-    _onDataCallbacks.addAll(callbacks);
-
-    if (!removeAfterInvocation) {
-      _notRemovableOnDataCallbacks.addAll(callbacks);
-    }
-
-    return () {
-      _onDataCallbacks.removeWhere((cb) => callbacks.contains(cb));
-      _notRemovableOnDataCallbacks.removeWhere((cb) => callbacks.contains(cb));
-    };
-  }
+  /// as appropriate
+  void onData(Iterable<OnData> callbacks) => _onDataCallbacks.addAll(callbacks);
 
   /// Applies [onData] callbacks at the end of [addResult]
   ///
   /// [fromRebroadcast] is used to avoid the super-edge case of infinite rebroadcasts
   /// (not sure if it's even possible)
   void _applyCallbacks(
-    QueryResult<TParsed>? result, {
+    QueryResult? result, {
     bool fromRebroadcast = false,
   }) async {
     final callbacks = [
       ..._onDataCallbacks,
-      if (!fromRebroadcast) _maybeRebroadcast,
+      if (!fromRebroadcast) _maybeRebroadcast
     ];
     for (final callback in callbacks) {
       await callback(result);
@@ -325,8 +296,7 @@ class ObservableQuery<TParsed> {
 
     if (result!.isConcrete) {
       // avoid removing new callbacks
-      _onDataCallbacks.removeWhere((cb) =>
-          callbacks.contains(cb) && !_notRemovableOnDataCallbacks.contains(cb));
+      _onDataCallbacks.removeWhere((cb) => callbacks.contains(cb));
 
       // if there are new callbacks, there is maybe another inflight mutation
       if (_onDataCallbacks.isEmpty) {
@@ -357,7 +327,7 @@ class ObservableQuery<TParsed> {
       scheduler!.stopPollingQuery(queryId);
     }
 
-    options = options.copyWithPollInterval(pollInterval);
+    options.pollInterval = pollInterval;
     lifecycle = QueryLifecycle.polling;
     scheduler!.startPollingQuery(options, queryId);
   }
@@ -365,18 +335,13 @@ class ObservableQuery<TParsed> {
   void stopPolling() {
     if (isCurrentlyPolling) {
       scheduler!.stopPollingQuery(queryId);
-      options = options.copyWithPollInterval(null);
+      options.pollInterval = null;
       lifecycle = QueryLifecycle.pollingStopped;
     }
   }
 
-  set variables(Map<String, dynamic> variables) {
-    options = options.copyWithVariables(variables);
-  }
-
-  set optimisticResult(Object? optimisticResult) {
-    options = options.copyWithOptimisticResult(optimisticResult);
-  }
+  set variables(Map<String, dynamic> variables) =>
+      options.variables = variables;
 
   /// [onData] callbacks have het to be run
   ///

@@ -1,4 +1,5 @@
 import 'package:gql/language.dart';
+import 'package:gql_exec/gql_exec.dart';
 import 'package:test/test.dart';
 import 'package:mockito/mockito.dart';
 
@@ -82,7 +83,6 @@ void main() {
                     },
                   },
                 },
-                response: {},
               ),
             ],
           ),
@@ -142,7 +142,6 @@ void main() {
                     },
                   },
                 },
-                response: {},
               ),
             ],
           ),
